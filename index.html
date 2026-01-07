@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Tabla de Amortización – Educación Financiera</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+body{
+    font-family:"Segoe UI",Arial;
+    background:#eef2f7;
+    padding:30px
+}
+.container{
+    max-width:1100px;
+    margin:auto
+}
+.card{
+    background:#fff;
+    padding:30px;
+    border-radius:16px;
+    box-shadow:0 12px 30px rgba(0,0,0,.1)
+}
+h2{
+    text-align:center;
+    color:#2c3e50;
+    margin-bottom:25px
+}
+.grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:14px
+}
+input,button{
+    padding:12px;
+    border-radius:10px;
+    border:1px solid #ccc;
+    font-size:14px
+}
+button{
+    background:#2980b9;
+    color:#fff;
+    border:0;
+    cursor:pointer;
+    font-weight:600
+}
+button.secondary{
+    background:#27ae60
+}
+.actions{
+    margin-top:20px;
+    display:flex;
+    justify-content:center;
+    gap:12px
+}
+.error{
+    margin-top:15px;
+    background:#f8d7da;
+    color:#721c24;
+    padding:12px;
+    border-radius:8px;
+    display:none
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:25px;
+    font-size:13px
+}
+th{
+    background:#2980b9;
+    color:#fff;
+    padding:10px
+}
+td{
+    border:1px solid #ddd;
+    padding:8px;
+    text-align:right
+}
+td:first-child,th:first-child{
+    text-align:center
+}
+.info{
+    margin-top:20px;
+    background:#f4f6f9;
+    padding:14px;
+    border-radius:10px;
+    font-size:14px;
+    color:#34495e
+}
+.resumen{
+    margin-top:15px;
+    font-size:15px;
+    font-weight:600
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+<div class="card">
+
+<h2>Tabla de Amortización – Cuota Fija</h2>
+
+<div class="grid">
+<input id="cliente" placeholder="Cliente">
+<input type="date" id="fecha">
+<input id="coordinador" placeholder="Coordinador">
+<input id="asesor" placeholder="Asesor">
+<input type="number" id="monto" placeholder="Monto del crédito">
+<input type="number" id="cuota" placeholder="Cuota fija mensual">
+<input type="number" id="plazo" placeholder="Plazo (meses)">
+<input type="number" step="0.01" id="tasa" placeholder="Tasa anual %">
+</div>
+
+<div class="actions">
+<button onclick="generarTabla()">Generar tabla</button>
+<button id="btnPDF" class="secondary" onclick="generarPDF()" style="display:none">
+Descargar PDF
+</button>
+</div>
+
+<div id="error" class="error"></div>
+<div id="resultado"></div>
+
+</div>
+</div>
+
+<script>
+let tablaGlobal = [];
+let datos = {};
+
+function fmt(n){
+    return n.toLocaleString('es-EC',{minimumFractionDigits:2});
+}
+
+function generarTabla(){
+
+    const cliente = clienteEl.value.trim();
+    const fecha = fechaEl.value || new Date().toISOString().slice(0,10);
+    const coordinador = coordinadorEl.value.trim();
+    const asesor = asesorEl.value.trim();
+
+    const monto = parseFloat(montoEl.value);
+    const cuota = parseFloat(cuotaEl.value);
+    const plazo = parseInt(plazoEl.value);
+    const tasa = parseFloat(tasaEl.value);
+
+    error.style.display="none";
+    resultado.innerHTML="";
+    btnPDF.style.display="none";
+
+    if(monto<=0 || cuota<=0 || plazo<=0 || tasa<=0){
+        mostrarError("Todos los valores deben ser mayores a cero.");
+        return;
+    }
+
+    const tasaMensual = (tasa/100)/12;
+
+    if(cuota <= monto * tasaMensual){
+        mostrarError("La cuota no cubre el interés mensual.");
+        return;
+    }
+
+    let saldo = monto;
+    tablaGlobal = [];
+
+    for(let i=1;i<=plazo;i++){
+        let interes = +(saldo * tasaMensual).toFixed(2);
+        let amort = +(cuota - interes).toFixed(2);
+        let saldoFinal = +(saldo - amort).toFixed(2);
+
+        if(i === plazo && saldoFinal !== 0){
+            amort += saldoFinal;
+            saldoFinal = 0;
+        }
+
+        tablaGlobal.push([i,saldo,interes,amort,cuota,saldoFinal]);
+        saldo = saldoFinal;
+    }
+
+    datos = {cliente,fecha,coordinador,asesor,monto,cuota,plazo,tasa};
+
+    mostrarTabla();
+    btnPDF.style.display="inline-block";
+}
+
+function mostrarTabla(){
+
+    const totalPagar = datos.cuota * datos.plazo;
+
+    let html = `
+    <div class="info">
+    <strong>Cliente:</strong> ${datos.cliente || "—"} |
+    <strong>Monto:</strong> $ ${fmt(datos.monto)} |
+    <strong>Cuota:</strong> $ ${fmt(datos.cuota)} |
+    <strong>Plazo:</strong> ${datos.plazo} meses |
+    <strong>Tasa:</strong> ${datos.tasa} %
+    </div>
+
+    <table>
+    <tr>
+    <th>#</th><th>Saldo Inicial</th><th>Interés</th>
+    <th>Amortización</th><th>Cuota</th><th>Saldo Final</th>
+    </tr>`;
+
+    tablaGlobal.forEach(r=>{
+        html+=`
+        <tr>
+        <td>${r[0]}</td>
+        <td>${fmt(r[1])}</td>
+        <td>${fmt(r[2])}</td>
+        <td>${fmt(r[3])}</td>
+        <td>${fmt(r[4])}</td>
+        <td>${fmt(r[5])}</td>
+        </tr>`;
+    });
+
+    html+=`</table>
+    <div class="resumen">
+    <strong>Total a pagar: $ ${fmt(totalPagar)}</strong>
+    </div>`;
+
+    resultado.innerHTML = html;
+}
+
+function generarPDF(){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p','mm','a4');
+
+    const totalPagar = datos.cuota * datos.plazo;
+
+    pdf.setFontSize(14);
+    pdf.text("TABLA DE AMORTIZACIÓN",105,15,{align:"center"});
+
+    pdf.setFontSize(10);
+    pdf.text(`Cliente: ${datos.cliente || "—"}`,14,25);
+    pdf.text(`Fecha: ${datos.fecha}`,14,31);
+    pdf.text(`Coordinador: ${datos.coordinador || "—"}`,14,37);
+    pdf.text(`Asesor: ${datos.asesor || "—"}`,14,43);
+
+    pdf.text(`Monto: $ ${fmt(datos.monto)}`,120,25);
+    pdf.text(`Cuota: $ ${fmt(datos.cuota)}`,120,31);
+    pdf.text(`Plazo: ${datos.plazo} meses`,120,37);
+    pdf.text(`Tasa anual: ${datos.tasa}%`,120,43);
+
+    pdf.autoTable({
+        startY:55,
+        head:[["#", "Saldo Inicial", "Interés", "Amortización", "Cuota", "Saldo Final"]],
+        body: tablaGlobal.map(r=>[
+            r[0],fmt(r[1]),fmt(r[2]),fmt(r[3]),fmt(r[4]),fmt(r[5])
+        ]),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[41,128,185]}
+    });
+
+    let y = pdf.lastAutoTable.finalY + 10;
+
+    pdf.setFontSize(11);
+    pdf.text(`TOTAL A PAGAR: $ ${fmt(totalPagar)}`,14,y);
+    y+=10;
+
+    pdf.setFontSize(10);
+    pdf.text("EDUCACIÓN FINANCIERA",14,y);
+    y+=6;
+
+    pdf.text(
+`• Este crédito ha sido diseñado para adaptarse a su capacidad de pago, permitiéndole organizar mejor sus finanzas mes a mes.
+• En cada cuota, una parte se destina al pago de intereses y otra a reducir el capital de su deuda.
+• A medida que cumple puntualmente con sus pagos, su saldo disminuye y se acerca a la cancelación total del crédito.
+• Mantener sus pagos al día contribuye a su estabilidad financiera y fortalece su historial crediticio.
+• Antes de comprometerse con un crédito, asegúrese de que la cuota no afecte sus gastos esenciales ni el bienestar de su familia.`,
+14,y,{maxWidth:180}
+);
+
+    pdf.save("amortizacion.pdf");
+}
+
+function mostrarError(msg){
+    error.innerText = msg;
+    error.style.display="block";
+}
+
+const clienteEl = document.getElementById("cliente");
+const fechaEl = document.getElementById("fecha");
+const coordinadorEl = document.getElementById("coordinador");
+const asesorEl = document.getElementById("asesor");
+const montoEl = document.getElementById("monto");
+const cuotaEl = document.getElementById("cuota");
+const plazoEl = document.getElementById("plazo");
+const tasaEl = document.getElementById("tasa");
+const error = document.getElementById("error");
+const resultado = document.getElementById("resultado");
+const btnPDF = document.getElementById("btnPDF");
+</script>
+
+</body>
+</html>
